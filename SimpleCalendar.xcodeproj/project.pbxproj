@@ -1,0 +1,319 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AC1000000000000000000001 /* SimpleCalendarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000004 /* SimpleCalendarApp.swift */; };
+		AC1000000000000000000002 /* CalendarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000005 /* CalendarPopoverView.swift */; };
+		AC1000000000000000000003 /* CalendarModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000006 /* CalendarModel.swift */; };
+		AC1000000000000000000017 /* CalendarSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC100000000000000000001C /* CalendarSources.swift */; };
+		AC1000000000000000000018 /* CalendarSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC100000000000000000001D /* CalendarSettings.swift */; };
+		AC1000000000000000000019 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC100000000000000000001E /* SettingsView.swift */; };
+		AC100000000000000000001A /* CalendarCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC100000000000000000001F /* CalendarCountdownView.swift */; };
+		AC100000000000000000001B /* CalendarData in Resources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000020 /* CalendarData */; };
+		AC1000000000000000000021 /* CalendarCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000025 /* CalendarCoreTests.swift */; };
+		AC1000000000000000000022 /* CalendarModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000006 /* CalendarModel.swift */; };
+		AC1000000000000000000023 /* CalendarSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC100000000000000000001C /* CalendarSources.swift */; };
+		AC1000000000000000000024 /* CalendarData in Resources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000020 /* CalendarData */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AC1000000000000000000004 /* SimpleCalendarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleCalendarApp.swift; sourceTree = "<group>"; };
+		AC1000000000000000000005 /* CalendarPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarPopoverView.swift; sourceTree = "<group>"; };
+		AC1000000000000000000006 /* CalendarModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModel.swift; sourceTree = "<group>"; };
+		AC1000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC1000000000000000000008 /* SimpleCalendar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimpleCalendar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC100000000000000000001C /* CalendarSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSources.swift; sourceTree = "<group>"; };
+		AC100000000000000000001D /* CalendarSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSettings.swift; sourceTree = "<group>"; };
+		AC100000000000000000001E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AC100000000000000000001F /* CalendarCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCountdownView.swift; sourceTree = "<group>"; };
+		AC1000000000000000000020 /* CalendarData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CalendarData; sourceTree = "<group>"; };
+		AC1000000000000000000025 /* CalendarCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCoreTests.swift; sourceTree = "<group>"; };
+		AC1000000000000000000026 /* SimpleCalendarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SimpleCalendarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AC100000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC100000000000000000002A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AC1000000000000000000009 = {
+			isa = PBXGroup;
+			children = (
+				AC100000000000000000000A /* SimpleCalendar */,
+				AC1000000000000000000027 /* SimpleCalendarTests */,
+				AC100000000000000000000B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AC100000000000000000000A /* SimpleCalendar */ = {
+			isa = PBXGroup;
+			children = (
+				AC1000000000000000000004 /* SimpleCalendarApp.swift */,
+				AC1000000000000000000005 /* CalendarPopoverView.swift */,
+				AC1000000000000000000006 /* CalendarModel.swift */,
+				AC100000000000000000001C /* CalendarSources.swift */,
+				AC100000000000000000001D /* CalendarSettings.swift */,
+				AC100000000000000000001E /* SettingsView.swift */,
+				AC100000000000000000001F /* CalendarCountdownView.swift */,
+				AC1000000000000000000020 /* CalendarData */,
+				AC1000000000000000000007 /* Info.plist */,
+			);
+			path = SimpleCalendar;
+			sourceTree = "<group>";
+		};
+		AC100000000000000000000B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AC1000000000000000000008 /* SimpleCalendar.app */,
+				AC1000000000000000000026 /* SimpleCalendarTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AC1000000000000000000027 /* SimpleCalendarTests */ = {
+			isa = PBXGroup;
+			children = (
+				AC1000000000000000000025 /* CalendarCoreTests.swift */,
+			);
+			path = SimpleCalendarTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AC100000000000000000000C /* SimpleCalendar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC1000000000000000000015 /* Build configuration list for PBXNativeTarget "SimpleCalendar" */;
+			buildPhases = (
+				AC100000000000000000000D /* Sources */,
+				AC100000000000000000000E /* Frameworks */,
+				AC100000000000000000000F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SimpleCalendar;
+			productName = SimpleCalendar;
+			productReference = AC1000000000000000000008 /* SimpleCalendar.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AC1000000000000000000028 /* SimpleCalendarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC100000000000000000002E /* Build configuration list for PBXNativeTarget "SimpleCalendarTests" */;
+			buildPhases = (
+				AC1000000000000000000029 /* Sources */,
+				AC100000000000000000002A /* Frameworks */,
+				AC100000000000000000002B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SimpleCalendarTests;
+			productName = SimpleCalendarTests;
+			productReference = AC1000000000000000000026 /* SimpleCalendarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AC1000000000000000000010 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = AC1000000000000000000016 /* Build configuration list for PBXProject "SimpleCalendar" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"zh-Hans",
+				Base,
+			);
+			mainGroup = AC1000000000000000000009;
+			productRefGroup = AC100000000000000000000B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AC100000000000000000000C /* SimpleCalendar */,
+				AC1000000000000000000028 /* SimpleCalendarTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AC100000000000000000000F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC100000000000000000001B /* CalendarData in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC100000000000000000002B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC1000000000000000000024 /* CalendarData in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AC100000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC1000000000000000000001 /* SimpleCalendarApp.swift in Sources */,
+				AC1000000000000000000002 /* CalendarPopoverView.swift in Sources */,
+				AC1000000000000000000003 /* CalendarModel.swift in Sources */,
+				AC1000000000000000000017 /* CalendarSources.swift in Sources */,
+				AC1000000000000000000018 /* CalendarSettings.swift in Sources */,
+				AC1000000000000000000019 /* SettingsView.swift in Sources */,
+				AC100000000000000000001A /* CalendarCountdownView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC1000000000000000000029 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC1000000000000000000021 /* CalendarCoreTests.swift in Sources */,
+				AC1000000000000000000022 /* CalendarModel.swift in Sources */,
+				AC1000000000000000000023 /* CalendarSources.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AC1000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AC1000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		AC1000000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JZ7NG8D7QU;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SimpleCalendar/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.simplecalendar.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+			};
+			name = Debug;
+		};
+		AC1000000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JZ7NG8D7QU;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SimpleCalendar/Info.plist;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.simplecalendar.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+			};
+			name = Release;
+		};
+		AC100000000000000000002C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = local.simplecalendar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		AC100000000000000000002D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = local.simplecalendar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AC1000000000000000000015 /* Build configuration list for PBXNativeTarget "SimpleCalendar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC1000000000000000000013 /* Debug */,
+				AC1000000000000000000014 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC1000000000000000000016 /* Build configuration list for PBXProject "SimpleCalendar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC1000000000000000000011 /* Debug */,
+				AC1000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC100000000000000000002E /* Build configuration list for PBXNativeTarget "SimpleCalendarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC100000000000000000002C /* Debug */,
+				AC100000000000000000002D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AC1000000000000000000010 /* Project object */;
+}
