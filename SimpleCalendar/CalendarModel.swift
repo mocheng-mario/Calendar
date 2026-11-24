@@ -31,11 +31,13 @@ final class CalendarModel: ObservableObject {
         }
     }
 
-    var monthTitle: String {
+    var selectedYear: Int { CalendarDates.gregorian.component(.year, from: selectedDate) }
+
+    var monthDayTitle: String {
         let calendar = CalendarDates.gregorian
-        let year = calendar.component(.year, from: selectedDate)
         let month = calendar.component(.month, from: selectedDate)
-        return "\(year)年\(month)月"
+        let day = calendar.component(.day, from: selectedDate)
+        return String(format: "%02d-%02d", month, day)
     }
 
     func days(startingOn firstWeekday: Int) -> [CalendarDay] {
@@ -61,11 +63,23 @@ final class CalendarModel: ObservableObject {
     func moveMonth(by offset: Int) {
         let calendar = CalendarDates.gregorian
         guard let currentMonth = calendar.dateInterval(of: .month, for: selectedDate),
-              let nextMonth = calendar.date(byAdding: .month, value: offset, to: currentMonth.start),
-              let lastDay = calendar.range(of: .day, in: .month, for: nextMonth)?.last else { return }
+              let nextMonth = calendar.date(byAdding: .month, value: offset, to: currentMonth.start) else { return }
+        selectMatchingDay(inMonthStartingAt: nextMonth)
+    }
 
+    func goToYear(_ year: Int) {
+        guard (1...9999).contains(year), year != selectedYear else { return }
+        let calendar = CalendarDates.gregorian
+        let month = calendar.component(.month, from: selectedDate)
+        guard let start = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else { return }
+        selectMatchingDay(inMonthStartingAt: start)
+    }
+
+    private func selectMatchingDay(inMonthStartingAt month: Date) {
+        let calendar = CalendarDates.gregorian
+        guard let lastDay = calendar.range(of: .day, in: .month, for: month)?.last else { return }
         let day = min(calendar.component(.day, from: selectedDate), lastDay)
-        if let date = calendar.date(byAdding: .day, value: day - 1, to: nextMonth) {
+        if let date = calendar.date(byAdding: .day, value: day - 1, to: month) {
             select(date)
         }
     }

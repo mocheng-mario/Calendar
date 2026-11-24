@@ -74,13 +74,13 @@ struct SettingsView: View {
 
     private var general: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("登录后启动 SimpleCalendar", isOn: Binding(
+            Toggle("登录后启动 Calendar", isOn: Binding(
                 get: { settings.launchesAtLogin },
                 set: { settings.setLaunchAtLogin($0) }
             ))
 
             if settings.loginItemStatus == .requiresApproval {
-                Text("请在系统设置的登录项中允许 SimpleCalendar 启动。")
+                Text("请在系统设置的登录项中允许 Calendar 启动。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Button("打开登录项设置…") { SMAppService.openSystemSettingsLoginItems() }
@@ -120,13 +120,13 @@ struct SettingsView: View {
                     }
                 }
                 Text("菜单栏预览").font(.headline)
-                Text(clockPreview)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                clockPreview
                 if settings.clockFields.contains(where: { $0.field == .custom && $0.isEnabled }) {
                     TextField("自定义格式", text: $settings.customClockFormat, prompt: Text("yyyy-MM-dd HH:mm"))
                 }
+
+                Divider()
+                calendarLayoutSettings
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -147,6 +147,39 @@ struct SettingsView: View {
         }
         .padding(18)
         .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var calendarLayoutSettings: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("月历布局").font(.headline)
+
+            Picker("详情栏", selection: $settings.popoverLayout.detailsSide) {
+                Text("左侧").tag(CalendarPopoverLayout.Side.left)
+                Text("右侧").tag(CalendarPopoverLayout.Side.right)
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 8) {
+                dimensionField("月历宽度", value: $settings.popoverLayout.calendarWidth,
+                               minimum: CalendarPopoverLayout.minimumCalendarWidth)
+                dimensionField("详情栏宽度", value: $settings.popoverLayout.detailsWidth,
+                               minimum: CalendarPopoverLayout.minimumDetailsWidth)
+                dimensionField("高度", value: $settings.popoverLayout.height, minimum: CalendarPopoverLayout.minimumHeight)
+            }
+
+            Toggle("允许拖动缩放", isOn: $settings.popoverLayout.allowsDragResize)
+        }
+    }
+
+    private func dimensionField(_ label: String, value: Binding<Int>, minimum: Int) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(.caption)
+            TextField(label, value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = max(minimum, $0) }),
+                      format: .number.grouping(.never))
+                .labelsHidden()
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func clockFieldRow(_ option: ClockFieldOption) -> some View {
@@ -191,9 +224,27 @@ struct SettingsView: View {
         }
     }
 
-    private var clockPreview: String {
-        let formatter = ClockField.makeFormatter()
-        return formatter.menuBarTitle(at: .now, pattern: settings.clockPattern)
+    private var clockPreview: some View {
+        let items = settings.clockItems(at: .now)
+        return HStack(spacing: 4) {
+            ForEach(items.indices, id: \.self) { index in
+                switch items[index] {
+                case .icon:
+                    Image("MenuBarIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .accessibilityLabel("日历图标")
+                case .text(let text):
+                    Text(text)
+                        .monospacedDigit()
+                        .lineLimit(2)
+                }
+            }
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
     }
 
     private var calendar: some View {

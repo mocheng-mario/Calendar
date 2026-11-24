@@ -4,7 +4,7 @@
       <BuildActionEntries>
          <BuildActionEntry buildForTesting="NO" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
             <BuildableReference BuildableIdentifier="primary"
-               BlueprintIdentifier="AC100000000000000000000C" BuildableName="SimpleCalendar.app"
+               BlueprintIdentifier="AC100000000000000000000C" BuildableName="Calendar.app"
                BlueprintName="SimpleCalendar" ReferencedContainer="container:SimpleCalendar.xcodeproj" />
          </BuildActionEntry>
          <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">
@@ -33,7 +33,7 @@
       debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
       <BuildableProductRunnable runnableDebuggingMode="0">
          <BuildableReference BuildableIdentifier="primary"
-            BlueprintIdentifier="AC100000000000000000000C" BuildableName="SimpleCalendar.app"
+            BlueprintIdentifier="AC100000000000000000000C" BuildableName="Calendar.app"
             BlueprintName="SimpleCalendar" ReferencedContainer="container:SimpleCalendar.xcodeproj" />
       </BuildableProductRunnable>
    </LaunchAction>
@@ -41,7 +41,7 @@
       useCustomWorkingDirectory="NO" debugDocumentVersioning="YES">
       <BuildableProductRunnable runnableDebuggingMode="0">
          <BuildableReference BuildableIdentifier="primary"
-            BlueprintIdentifier="AC100000000000000000000C" BuildableName="SimpleCalendar.app"
+            BlueprintIdentifier="AC100000000000000000000C" BuildableName="Calendar.app"
             BlueprintName="SimpleCalendar" ReferencedContainer="container:SimpleCalendar.xcodeproj" />
       </BuildableProductRunnable>
    </ProfileAction>

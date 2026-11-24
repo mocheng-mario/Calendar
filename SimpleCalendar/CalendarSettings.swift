@@ -6,6 +6,7 @@ import SwiftUI
 final class CalendarSettings: ObservableObject {
     private enum Key {
         static let theme = "themeColor"
+        static let popoverLayout = "popoverLayout"
         static let firstWeekday = "firstWeekday"
         static let clockFields = "clockFields"
         static let legacyClockFormat = "clockFormat"
@@ -20,10 +21,15 @@ final class CalendarSettings: ObservableObject {
     private let defaults: UserDefaults
     private let cacheDirectory: URL?
     private let solarTermCacheDirectory: URL?
+    private let leadingClockFormatter = ClockField.makeFormatter()
+    private let trailingClockFormatter = ClockField.makeFormatter()
     private var loadingSolarTermYears: Set<Int> = []
 
     @Published var theme: CalendarTheme {
         didSet { defaults.set(theme.rawValue, forKey: Key.theme) }
+    }
+    @Published var popoverLayout: CalendarPopoverLayout {
+        didSet { defaults.set(try? JSONEncoder().encode(popoverLayout), forKey: Key.popoverLayout) }
     }
     @Published var firstWeekday: Int {
         didSet { defaults.set(firstWeekday, forKey: Key.firstWeekday) }
@@ -47,8 +53,9 @@ final class CalendarSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let appID = Bundle.main.bundleIdentifier ?? "local.calendar.app"
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("SimpleCalendar", isDirectory: true)
+            .appendingPathComponent(appID, isDirectory: true)
         let cacheDirectory = support?.appendingPathComponent("HolidayCache", isDirectory: true)
         let solarDirectory = support?.appendingPathComponent("SolarTermCache", isDirectory: true)
         self.cacheDirectory = cacheDirectory
@@ -56,6 +63,8 @@ final class CalendarSettings: ObservableObject {
         cachedHolidays = cacheDirectory.map(HolidayCalendar.init(directory:)) ?? HolidayCalendar(documents: [])
         solarTerms = solarDirectory.map(SolarTerms.cached(in:)) ?? .bundled
         theme = defaults.string(forKey: Key.theme).flatMap(CalendarTheme.init(rawValue:)) ?? .amber
+        popoverLayout = defaults.data(forKey: Key.popoverLayout)
+            .flatMap { try? JSONDecoder().decode(CalendarPopoverLayout.self, from: $0) }?.clamped ?? CalendarPopoverLayout()
         let storedWeekday = defaults.integer(forKey: Key.firstWeekday)
         firstWeekday = (1...7).contains(storedWeekday) ? storedWeekday : 2
         clockFields = Self.loadClockFields(from: defaults)
@@ -109,11 +118,22 @@ final class CalendarSettings: ObservableObject {
         return calendar
     }
 
-    var clockPattern: String {
+    func clockItems(at date: Date) -> [ClockDisplayItem] {
         let custom = customClockFormat.trimmingCharacters(in: .whitespacesAndNewlines)
-        return clockFields.filter(\.isEnabled).map { option in
-            option.field == .custom && !custom.isEmpty ? String(custom.prefix(80)) : option.field.pattern
-        }.joined(separator: " ")
+        let enabled = clockFields.filter(\.isEnabled).map(\.field)
+
+        func textItems(_ fields: ArraySlice<ClockField>, formatter: DateFormatter) -> [ClockDisplayItem] {
+            guard !fields.isEmpty else { return [] }
+            let pattern = fields.map { $0 == .custom && !custom.isEmpty ? String(custom.prefix(80)) : $0.pattern }
+                .joined(separator: " ")
+            return [.text(formatter.menuBarTitle(at: date, pattern: pattern))]
+        }
+
+        guard let icon = enabled.firstIndex(of: .icon) else {
+            return textItems(enabled[...], formatter: leadingClockFormatter)
+        }
+        return textItems(enabled[..<icon], formatter: leadingClockFormatter) + [.icon]
+            + textItems(enabled[(icon + 1)...], formatter: trailingClockFormatter)
     }
 
     private static func loadClockFields(from defaults: UserDefaults) -> [ClockFieldOption] {
@@ -122,7 +142,8 @@ final class CalendarSettings: ObservableObject {
             var seen = Set<ClockField>()
             let unique = saved.filter { seen.insert($0.field).inserted }
             if unique.contains(where: \.isEnabled) {
-                return unique + ClockField.allCases.filter { !seen.contains($0) }.map { ClockFieldOption(field: $0, isEnabled: false) }
+                let icon = seen.insert(.icon).inserted ? [ClockFieldOption(field: .icon, isEnabled: true)] : []
+                return icon + unique + ClockField.allCases.filter { !seen.contains($0) }.map { ClockFieldOption(field: $0, isEnabled: false) }
             }
         }
         let fields: [ClockField]
@@ -134,8 +155,10 @@ final class CalendarSettings: ObservableObject {
             fields = [.custom]
         default: fields = ClockField.defaultFields
         }
-        let ordered = [.year] + fields.filter { $0 != .year } + ClockField.allCases.filter { $0 != .year && !fields.contains($0) }
-        return ordered.map { ClockFieldOption(field: $0, isEnabled: fields.contains($0)) }
+        let leadingFields: [ClockField] = [.icon, .year]
+        let ordered = leadingFields + fields.filter { !leadingFields.contains($0) }
+            + ClockField.allCases.filter { !leadingFields.contains($0) && !fields.contains($0) }
+        return ordered.map { ClockFieldOption(field: $0, isEnabled: $0 == .icon || fields.contains($0)) }
     }
 
     func setClockField(_ field: ClockField, enabled: Bool) {
@@ -326,6 +349,65 @@ final class CalendarSettings: ObservableObject {
     }
 }
 
+struct CalendarPopoverLayout: Codable, Equatable {
+    enum Side: String, Codable {
+        case left, right
+    }
+
+    static let minimumCalendarWidth = 320
+    static let minimumDetailsWidth = 116
+    static let minimumHeight = 340
+    static let outerPadding: CGFloat = 14
+    static let dividerWidth: CGFloat = 16
+
+    var calendarWidth = 396
+    var detailsWidth = 164
+    var height = 382
+    var detailsSide: Side = .right
+    var allowsDragResize = true
+
+    var size: CGSize {
+        CGSize(width: CGFloat(calendarWidth) + CGFloat(detailsWidth) + 2 * Self.outerPadding + Self.dividerWidth,
+               height: CGFloat(height))
+    }
+
+    var clamped: Self {
+        var value = self
+        value.calendarWidth = max(calendarWidth, Self.minimumCalendarWidth)
+        value.detailsWidth = max(detailsWidth, Self.minimumDetailsWidth)
+        value.height = max(height, Self.minimumHeight)
+        return value
+    }
+
+    func fitted(in space: CGSize?) -> Self {
+        var value = clamped
+        guard let space else { return value }
+        let available = Self.availableColumnWidth(in: space)
+        value.detailsWidth = min(value.detailsWidth, available - Self.minimumCalendarWidth)
+        value.calendarWidth = min(value.calendarWidth, available - value.detailsWidth)
+        value.height = min(value.height, max(Self.minimumHeight, Int(space.height)))
+        return value
+    }
+
+    func resizingColumn(on side: Side, widthChange: Int, heightChange: Int, in space: CGSize?) -> Self {
+        var value = self
+        let available = space.map(Self.availableColumnWidth(in:))
+        if side == detailsSide {
+            let limit = available.map { $0 - calendarWidth } ?? Int.max
+            value.detailsWidth = max(Self.minimumDetailsWidth, min(detailsWidth + widthChange, limit))
+        } else {
+            let limit = available.map { $0 - detailsWidth } ?? Int.max
+            value.calendarWidth = max(Self.minimumCalendarWidth, min(calendarWidth + widthChange, limit))
+        }
+        value.height = max(Self.minimumHeight, min(height + heightChange, space.map { Int($0.height) } ?? Int.max))
+        return value
+    }
+
+    private static func availableColumnWidth(in space: CGSize) -> Int {
+        max(minimumCalendarWidth + minimumDetailsWidth, Int(space.width - 2 * outerPadding - dividerWidth))
+    }
+}
+
 struct HolidaySelection: Codable {
     static let maximumSources = 3
     var sources: [SavedHolidaySource] = []
@@ -376,11 +458,16 @@ extension DateFormatter {
         let text = string(from: date).components(separatedBy: .newlines).joined(separator: " ")
             .trimmingCharacters(in: .whitespaces)
         if text.isEmpty {
-            dateFormat = ClockField.defaultFields.map(\.pattern).joined(separator: " ")
+            dateFormat = ClockField.defaultFields.filter { $0 != .icon }.map(\.pattern).joined(separator: " ")
             return string(from: date)
         }
         return text
     }
+}
+
+enum ClockDisplayItem: Equatable {
+    case icon
+    case text(String)
 }
 
 struct ClockFieldOption: Codable, Identifiable {
@@ -390,12 +477,13 @@ struct ClockFieldOption: Codable, Identifiable {
 }
 
 enum ClockField: String, CaseIterable, Codable {
-    case year, date, numericDate, weekday, time, timeWithSeconds, custom
+    case icon, year, date, numericDate, weekday, time, timeWithSeconds, custom
 
-    static let defaultFields: [ClockField] = [.year, .date, .weekday, .timeWithSeconds]
+    static let defaultFields: [ClockField] = [.icon, .year, .date, .weekday, .timeWithSeconds]
 
     var label: String {
         switch self {
+        case .icon: return "日历图标"
         case .date: return "月日"
         case .numericDate: return "数字日期"
         case .weekday: return "星期"
@@ -408,6 +496,7 @@ enum ClockField: String, CaseIterable, Codable {
 
     var pattern: String {
         switch self {
+        case .icon: return ""
         case .date: return "M月d日"
         case .numericDate: return "yyyy-MM-dd"
         case .weekday: return "EEE"

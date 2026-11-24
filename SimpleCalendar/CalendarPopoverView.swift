@@ -1,55 +1,188 @@
+import AppKit
 import SwiftUI
 
 struct CalendarPopoverView: View {
-    static let contentSize = CGSize(width: 604, height: 341)
+    private enum ResizeHandle {
+        case divider
+        case corner(CalendarPopoverLayout.Side)
+    }
+    private struct ResizeStart {
+        let pointer: CGPoint
+        let layout: CalendarPopoverLayout
+    }
 
     @ObservedObject var model: CalendarModel
     @ObservedObject var settings: CalendarSettings
+    let availableSize: CGSize?
     let openSettings: () -> Void
     let openSchedule: (Date) -> Void
+    let resize: (CGSize) -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @State private var resizeStart: ResizeStart?
+    @State private var resizePreview: CalendarPopoverLayout?
+    @State private var isYearPickerOpen = false
 
     private static let gridSpacing: CGFloat = 3
+    private static let monthHeaderHeight: CGFloat = 40
+    private static let monthHeaderInset: CGFloat = 12
     private let columns = Array(repeating: GridItem(.flexible(), spacing: CalendarPopoverView.gridSpacing), count: 7)
     private var weekdays: [String] {
         (0..<7).map { CalendarDay.weekdayNames[(settings.firstWeekday - 1 + $0) % 7] }
     }
     private var palette: CalendarPalette { CalendarPalette(isDark: colorScheme == .dark, theme: settings.theme) }
 
+    init(model: CalendarModel, settings: CalendarSettings, availableSize: CGSize?,
+         openSettings: @escaping () -> Void, openSchedule: @escaping (Date) -> Void,
+         resize: @escaping (CGSize) -> Void) {
+        self.model = model
+        self.settings = settings
+        self.availableSize = availableSize
+        self.openSettings = openSettings
+        self.openSchedule = openSchedule
+        self.resize = resize
+    }
+
     var body: some View {
+        let layout = resizePreview ?? settings.popoverLayout.fitted(in: availableSize)
         let days = model.days(startingOn: settings.firstWeekday)
         let holidays = settings.holidays
         let years = Set(days.map { CalendarDates.gregorian.component(.year, from: $0.date) })
         let scheduleDays = Dictionary(grouping: model.schedules) { CalendarDates.localDay(at: $0.date) }
         let selectedSchedules = scheduleDays[model.selectedDate] ?? []
-        HStack(alignment: .top, spacing: 18) {
+        let details = detailsPane(day: days.first { $0.date == model.selectedDate }, holidays: holidays,
+                                  schedules: selectedSchedules, width: layout.detailsWidth)
+        let calendar = calendarGrid(days, holidays: holidays, scheduleDays: Set(scheduleDays.keys))
+            .frame(width: CGFloat(layout.calendarWidth))
+        HStack(alignment: .top, spacing: 0) {
+            if layout.detailsSide == .left {
+                details
+                paneDivider(enabled: layout.allowsDragResize)
+                calendar
+            } else {
+                calendar
+                paneDivider(enabled: layout.allowsDragResize)
+                details
+            }
+        }
+        .padding(CalendarPopoverLayout.outerPadding)
+        .frame(width: layout.size.width, height: layout.size.height, alignment: .top)
+        .background(palette.background)
+        .overlay(alignment: .bottomLeading) {
+            if layout.allowsDragResize { cornerHandle(.left, detailsSide: layout.detailsSide) }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if layout.allowsDragResize { cornerHandle(.right, detailsSide: layout.detailsSide) }
+        }
+        .overlay(alignment: .topLeading) {
+            if isYearPickerOpen {
+                let calendarLeading = layout.detailsSide == .left
+                    ? CGFloat(layout.detailsWidth) + CalendarPopoverLayout.dividerWidth : 0
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { isYearPickerOpen = false }
+                        .accessibilityHidden(true)
+                    yearDropdown
+                        .padding(.leading, CalendarPopoverLayout.outerPadding + calendarLeading + Self.monthHeaderInset)
+                        .padding(.top, CalendarPopoverLayout.outerPadding + Self.monthHeaderHeight - 4)
+                }
+            }
+        }
+        .onAppear { loadYears(years) }
+        .onChange(of: years) { loadYears($0) }
+    }
+
+    private func cornerHandle(_ side: CalendarPopoverLayout.Side, detailsSide: CalendarPopoverLayout.Side) -> some View {
+        let pane = side == detailsSide ? "详情栏" : "月历"
+        let label = "拖动调整\(pane)宽度和弹窗高度"
+        return Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(palette.secondary)
+            .scaleEffect(x: side == .left ? -1 : 1, y: 1)
+            .frame(width: 24, height: 16)
+            .contentShape(Rectangle())
+            .gesture(resizeGesture(.corner(side)))
+            .accessibilityLabel(Text(label))
+            .help(label)
+            .padding(2)
+    }
+
+    private func detailsPane(day: CalendarDay?, holidays: HolidayCalendar, schedules: [CalendarSchedule], width: Int) -> some View {
+        let compact = width < 158
+        return ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if let day = days.first(where: { $0.date == model.selectedDate }) {
-                    dateDetail(for: day, holidays: holidays)
+                if let day {
+                    dateDetail(for: day, holidays: holidays, compact: compact)
                     Divider()
                 }
 
                 CalendarCountdownView(holiday: holidays.nextStatutoryDay(from: model.today),
                                       solarTerm: holidays.solarTerms.next(from: model.today), today: model.today,
-                                      schedules: model.schedules, palette: palette) {
+                                      schedules: model.schedules, palette: palette, showsDates: !compact) {
                     openSchedule(model.selectedDate)
                 }
 
-                if !selectedSchedules.isEmpty {
+                if !schedules.isEmpty {
                     Divider()
-                    daySchedules(selectedSchedules)
+                    daySchedules(schedules)
                 }
             }
-            .frame(width: 204, alignment: .leading)
-
-            calendarGrid(days, holidays: holidays, scheduleDays: Set(scheduleDays.keys))
-                .frame(width: 354)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
-        .background(palette.background)
-        .onAppear { loadYears(years) }
-        .onChange(of: years) { loadYears($0) }
+        .frame(width: CGFloat(width))
+    }
+
+    @ViewBuilder
+    private func paneDivider(enabled: Bool) -> some View {
+        let area = Color.clear.frame(width: CalendarPopoverLayout.dividerWidth).frame(maxHeight: .infinity)
+        if enabled {
+            area.overlay {
+                Capsule().fill(palette.muted.opacity(0.45)).frame(width: 2, height: 24)
+            }
+            .contentShape(Rectangle())
+            .gesture(resizeGesture(.divider))
+            .accessibilityLabel("拖动调整两栏比例")
+            .help("拖动调整两栏比例")
+        } else {
+            area.allowsHitTesting(false)
+        }
+    }
+
+    private func resizeGesture(_ handle: ResizeHandle) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                // NSPopover 会随尺寸重新锚定，使用屏幕坐标以免窗口移动干扰位移。
+                let pointer = NSEvent.mouseLocation
+                let origin = resizeStart ?? ResizeStart(
+                    pointer: CGPoint(x: pointer.x - value.translation.width, y: pointer.y + value.translation.height),
+                    layout: settings.popoverLayout.fitted(in: availableSize)
+                )
+                if resizeStart == nil { resizeStart = origin }
+                let horizontal = Int((pointer.x - origin.pointer.x).rounded())
+                var next = origin.layout
+                switch handle {
+                case .divider:
+                    let adjustment = origin.layout.detailsSide == .left ? horizontal : -horizontal
+                    let delta = min(max(adjustment, CalendarPopoverLayout.minimumDetailsWidth - next.detailsWidth),
+                                    next.calendarWidth - CalendarPopoverLayout.minimumCalendarWidth)
+                    next.detailsWidth += delta
+                    next.calendarWidth -= delta
+                case .corner(let side):
+                    next = origin.layout.resizingColumn(
+                        on: side, widthChange: side == .left ? -horizontal : horizontal,
+                        heightChange: Int((origin.pointer.y - pointer.y).rounded()), in: availableSize
+                    )
+                }
+                let previous = resizePreview ?? origin.layout
+                guard next != previous else { return }
+                resizePreview = next
+                if next.size != previous.size { resize(next.size) }
+            }
+            .onEnded { _ in
+                if let resizePreview, resizePreview != resizeStart?.layout { settings.popoverLayout = resizePreview }
+                resizePreview = nil
+                resizeStart = nil
+            }
     }
 
     private func loadYears(_ years: Set<Int>) {
@@ -57,65 +190,83 @@ struct CalendarPopoverView: View {
     }
 
     private func calendarGrid(_ days: [CalendarDay], holidays: HolidayCalendar, scheduleDays: Set<Date>) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let panelShape = RoundedRectangle(cornerRadius: 11)
+        return VStack(alignment: .leading, spacing: 0) {
             monthHeader
-                .frame(height: 42)
-                .padding(.bottom, 6)
+                .padding(.horizontal, Self.monthHeaderInset)
+                .frame(height: Self.monthHeaderHeight)
+                .background(palette.toolbar)
 
             weekdayHeader
-                .frame(height: 17)
-                .padding(.bottom, 5)
+                .padding(.horizontal, 8)
+                .frame(height: 20)
 
-            LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
-                ForEach(days) { day in
-                    let solarTerm = holidays.solarTerms.name(on: day.date)
-                    CalendarDayCell(day: day, isToday: day.date == model.today,
-                                    isSelected: day.date == model.selectedDate, holiday: holidays[day.date],
-                                    statutoryName: holidays.statutoryOccasion(on: day.date)?.name,
-                                    festival: day.festival(solarTerm: solarTerm), solarTerm: solarTerm,
-                                    hasSchedule: scheduleDays.contains(day.date),
-                                    palette: palette) {
-                        model.select(day.date)
-                    }
-                    .contextMenu {
-                        Button {
-                            openSchedule(day.date)
-                        } label: {
-                            Label("添加日程…", systemImage: "calendar.badge.plus")
+            Rectangle()
+                .fill(palette.divider)
+                .frame(height: 1)
+                .padding(.horizontal, 9)
+
+            GeometryReader { geometry in
+                let rowHeight = max(1, (geometry.size.height - 5 * Self.gridSpacing) / 6)
+                LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
+                    ForEach(days) { day in
+                        let solarTerm = holidays.solarTerms.name(on: day.date)
+                        CalendarDayCell(day: day, isToday: day.date == model.today,
+                                        isSelected: day.date == model.selectedDate, holiday: holidays[day.date],
+                                        statutoryName: holidays.statutoryOccasion(on: day.date)?.name,
+                                        festival: day.festival(solarTerm: solarTerm), solarTerm: solarTerm,
+                                        hasSchedule: scheduleDays.contains(day.date),
+                                        height: rowHeight, palette: palette) {
+                            model.select(day.date)
+                        }
+                        .contextMenu {
+                            Button {
+                                openSchedule(day.date)
+                            } label: {
+                                Label("添加日程…", systemImage: "calendar.badge.plus")
+                            }
                         }
                     }
                 }
             }
-            .frame(height: 6 * CalendarDayCell.height + 5 * Self.gridSpacing)
+            .padding(.horizontal, 8)
+            .padding(.top, 3)
+            .padding(.bottom, 6)
         }
+        .background(palette.surface)
+        .clipShape(panelShape)
+        .overlay { panelShape.strokeBorder(palette.divider.opacity(0.65)).allowsHitTesting(false) }
     }
 
     private var monthHeader: some View {
         HStack(spacing: 5) {
-            Text(model.monthTitle)
-                .font(.system(size: 22, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(palette.primary)
-                .accessibilityAddTraits(.isHeader)
+            yearPicker
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 4)
 
-            monthArrow("chevron.left", label: "上个月", offset: -1)
+            HStack(spacing: 8) {
+                monthArrow("chevron.left", label: "上个月", offset: -1)
+                Text(model.monthDayTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.primary)
+                    .fixedSize()
+                    .accessibilityAddTraits(.isHeader)
+                monthArrow("chevron.right", label: "下个月", offset: 1)
+            }
+
+            Spacer(minLength: 4)
 
             Button(action: model.goToToday) {
-                Text("今天")
+                Text("回今天")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(palette.primary)
-                    .padding(.horizontal, 11)
-                    .frame(height: 28)
-                    .background(palette.cell, in: Capsule())
-                    .overlay { Capsule().strokeBorder(palette.divider, lineWidth: 1) }
+                    .foregroundStyle(palette.secondary)
+                    .frame(height: 16)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .accessibilityLabel("返回今天")
             .help("返回今天")
-
-            monthArrow("chevron.right", label: "下个月", offset: 1)
 
             Button(action: openSettings) {
                 Image(systemName: "gearshape")
@@ -130,6 +281,82 @@ struct CalendarPopoverView: View {
         }
     }
 
+    private var yearPicker: some View {
+        let shape = RoundedRectangle(cornerRadius: 6)
+        return Button {
+            isYearPickerOpen.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Text("\(String(model.selectedYear))年")
+                    .font(.system(size: 14, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.primary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(palette.secondary)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(palette.surface.opacity(0.75), in: shape)
+            .overlay { shape.strokeBorder(palette.divider) }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityLabel("选择年份")
+        .accessibilityValue(Text(String(model.selectedYear)))
+        .help("选择年份")
+    }
+
+    private var yearDropdown: some View {
+        let supported = SolarTerms.supportedYears
+        let selectedYear = model.selectedYear
+        let years = min(supported.lowerBound, selectedYear)...max(supported.upperBound, selectedYear)
+        let rowHeight: CGFloat = 25
+        let shape = RoundedRectangle(cornerRadius: 8)
+
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(years.reversed()), id: \.self) { year in
+                        let isSelected = year == selectedYear
+                        Button {
+                            isYearPickerOpen = false
+                            guard !isSelected else { return }
+                            model.goToYear(year)
+                            Task { _ = try? await settings.refreshDefaultHolidays(force: false, years: [year]) }
+                        } label: {
+                            HStack {
+                                Text("\(String(year))年").monospacedDigit()
+                                Spacer(minLength: 8)
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundStyle(palette.primary)
+                            .padding(.horizontal, 8)
+                            .frame(height: rowHeight)
+                            .background(isSelected ? palette.toolbar : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .id(year)
+                    }
+                }
+            }
+            .frame(width: 104, height: 7 * rowHeight)
+            .onAppear { proxy.scrollTo(selectedYear, anchor: .center) }
+        }
+        .padding(4)
+        .background(palette.surface, in: shape)
+        .overlay { shape.strokeBorder(palette.divider) }
+        .shadow(color: .black.opacity(0.16), radius: 6, y: 3)
+    }
+
     private func monthArrow(_ symbol: String, label: String, offset: Int) -> some View {
         Button {
             model.moveMonth(by: offset)
@@ -137,10 +364,10 @@ struct CalendarPopoverView: View {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(palette.secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
+                .frame(width: 11, height: 16)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
         .accessibilityLabel(Text(label))
         .help(label)
     }
@@ -148,7 +375,7 @@ struct CalendarPopoverView: View {
     private var weekdayHeader: some View {
         HStack(spacing: Self.gridSpacing) {
             ForEach(weekdays, id: \.self) { weekday in
-                Text(weekday)
+                Text("周\(weekday)")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(weekday == "六" || weekday == "日" ? palette.weekend : palette.secondary)
                     .frame(maxWidth: .infinity)
@@ -157,31 +384,41 @@ struct CalendarPopoverView: View {
         .accessibilityHidden(true)
     }
 
-    private func dateDetail(for day: CalendarDay, holidays: HolidayCalendar) -> some View {
+    private func dateDetail(for day: CalendarDay, holidays: HolidayCalendar, compact: Bool) -> some View {
         let solarTerm = holidays.solarTerms.name(on: day.date)
         let holiday = holidays[day.date]
         let festival = day.festival(solarTerm: solarTerm)
+        let isToday = day.date == model.today
         let year = CalendarDates.gregorian.component(.year, from: day.date)
         let missing = [holidays.covers(day.date) ? nil : "调休未收录",
                        holidays.solarTerms.years.contains(year) ? nil : "节气未收录"].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 10) {
-                Text("\(day.day)")
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
+            if compact {
+                Text("\(day.month)月\(day.day)日 · 周\(day.weekdayName)")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(palette.primary)
-                    .frame(width: 51, height: 48)
-                    .background(palette.cell, in: RoundedRectangle(cornerRadius: 10))
-                    .accessibilityHidden(true)
+                Text(lunarDescription(day.lunarDate))
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    Text("\(day.day)")
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(isToday ? palette.todayText : palette.primary)
+                        .frame(width: 42, height: 44)
+                        .background(isToday ? palette.today : palette.surface, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(day.month)月 · 星期\(day.weekdayName)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(palette.primary)
-                        .accessibilityLabel("\(day.month)月\(day.day)日，星期\(day.weekdayName)")
-                    Text(lunarDescription(day.lunarDate))
-                        .font(.system(size: 13))
-                        .foregroundStyle(palette.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(day.month)月 · 星期\(day.weekdayName)")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(palette.primary)
+                            .accessibilityLabel("\(day.month)月\(day.day)日，星期\(day.weekdayName)")
+                        Text(lunarDescription(day.lunarDate))
+                            .font(.system(size: 12))
+                            .foregroundStyle(palette.secondary)
+                    }
                 }
             }
 
@@ -210,34 +447,30 @@ struct CalendarPopoverView: View {
     }
 
     private func daySchedules(_ schedules: [CalendarSchedule]) -> some View {
-        let rowHeight: CGFloat = 20
-        return VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("当天日程")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(palette.primary)
                 .accessibilityAddTraits(.isHeader)
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(schedules) { schedule in
-                        HStack(spacing: 8) {
-                            Text(schedule.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))))
-                                .foregroundStyle(palette.secondary)
-                                .monospacedDigit()
-                                .fixedSize()
-                            Text(schedule.displayTitle)
-                                .lineLimit(1)
-                                .help(schedule.displayTitle)
-                            Spacer(minLength: 0)
-                        }
-                        .font(.system(size: 13))
-                        .foregroundStyle(palette.primary)
-                        .frame(height: rowHeight)
-                        .accessibilityElement(children: .combine)
+            LazyVStack(spacing: 0) {
+                ForEach(schedules) { schedule in
+                    HStack(spacing: 8) {
+                        Text(schedule.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))))
+                            .foregroundStyle(palette.secondary)
+                            .monospacedDigit()
+                            .fixedSize()
+                        Text(schedule.displayTitle)
+                            .lineLimit(1)
+                            .help(schedule.displayTitle)
+                        Spacer(minLength: 0)
                     }
+                    .font(.system(size: 13))
+                    .foregroundStyle(palette.primary)
+                    .frame(height: 20)
+                    .accessibilityElement(children: .combine)
                 }
             }
-            .frame(maxHeight: CGFloat(min(schedules.count, 3)) * rowHeight)
         }
     }
 
@@ -259,8 +492,6 @@ struct CalendarPopoverView: View {
 }
 
 private struct CalendarDayCell: View {
-    static let height: CGFloat = 38
-
     let day: CalendarDay
     let isToday: Bool
     let isSelected: Bool
@@ -269,6 +500,7 @@ private struct CalendarDayCell: View {
     let festival: Festival?
     let solarTerm: String?
     let hasSchedule: Bool
+    let height: CGFloat
     let palette: CalendarPalette
     let action: () -> Void
 
@@ -282,26 +514,22 @@ private struct CalendarDayCell: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Text("\(day.day)")
-                    .font(.system(size: 18, weight: isToday ? .semibold : .medium))
+                    .font(.system(size: 18, weight: isToday || isSelected ? .semibold : .regular))
                     .monospacedDigit()
                     .foregroundStyle(dayColor)
                 Text(occasionName ?? day.lunarDate?.gridLabel ?? "—")
-                    .font(.system(size: 10, weight: occasionName == nil ? .regular : .medium))
+                    .font(.system(size: 11, weight: occasionName == nil ? .regular : .medium))
                     .foregroundStyle(subtitleColor)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: Self.height)
-            .background {
-                ZStack {
-                    shape.fill(isToday ? palette.today : palette.cell.opacity(day.isCurrentMonth ? 1 : 0.43))
-                    if !isToday, day.isCurrentMonth, let festivalColor {
-                        shape.fill(festivalColor.opacity(palette.isDark ? 0.16 : 0.07))
-                    }
-                }
-            }
+            .frame(height: height)
+            .background(highlight, in: shape)
             .overlay {
-                shape.strokeBorder(borderColor, lineWidth: isSelected ? 1.5 : 1)
+                if isSelected {
+                    shape.strokeBorder(isToday ? palette.todayText.opacity(0.4) : palette.selection, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
             }
             .overlay(alignment: .topTrailing) {
                 if let holiday {
@@ -341,9 +569,14 @@ private struct CalendarDayCell: View {
         return solarTerm == nil ? palette.secondary : palette.solarTerm
     }
 
-    private var borderColor: Color {
-        if isSelected { return isToday ? palette.todayText.opacity(0.55) : palette.selection }
-        return isHovered ? palette.secondary.opacity(0.55) : .clear
+    private var highlight: Color {
+        if isToday { return palette.today }
+        if isSelected { return palette.selection.opacity(palette.isDark ? 0.16 : 0.09) }
+        if isHovered { return palette.primary.opacity(0.06) }
+        guard day.isCurrentMonth else { return .clear }
+        if let festivalColor { return festivalColor.opacity(palette.isDark ? 0.16 : 0.075) }
+        if statutoryName != nil, let holiday { return palette.holiday(holiday).opacity(palette.isDark ? 0.14 : 0.065) }
+        return solarTerm == nil ? .clear : palette.solarTerm.opacity(palette.isDark ? 0.11 : 0.045)
     }
 
     private var accessibilityDescription: String {
@@ -362,8 +595,9 @@ struct CalendarPalette {
     let isDark: Bool
     let theme: CalendarTheme
 
-    var background: Color { color(0xF5F6F8, 0x23252A) }
-    var cell: Color { color(0xFFFFFF, 0x30333A) }
+    var background: Color { color(0xF4F5F6, 0x23252A) }
+    var surface: Color { color(0xFFFFFF, 0x2B2D32) }
+    var toolbar: Color { theme.fill.opacity(isDark ? 0.10 : 0.13) }
     var divider: Color { color(0xDCDFE4, 0x41444C) }
     var primary: Color { color(0x303640, 0xF2F3F6) }
     var secondary: Color { color(0x616976, 0xB9C0CA) }

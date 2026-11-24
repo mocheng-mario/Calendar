@@ -26,16 +26,12 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
     private var clock: Timer?
     private var holidayRefreshTimer: Timer?
 
-    private let clockFormatter = ClockField.makeFormatter()
+    private let clockFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+    private let menuBarIcon = NSImage(named: "MenuBarIcon")
+    private var lastClockItems: [ClockDisplayItem] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: CalendarPopoverView(
-            model: model, settings: settings,
-            openSettings: { [weak self] in self?.showSettings() },
-            openSchedule: { [weak self] day in self?.showScheduleEditor(for: day) }
-        ))
-        popover.contentSize = CalendarPopoverView.contentSize
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidResignKey(_:)),
                                                name: NSWindow.didResignKeyNotification, object: nil)
 
@@ -45,7 +41,7 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
             button.target = self
             button.action = #selector(handleStatusClick(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = "打开 SimpleCalendar，右键查看设置和退出"
+            button.toolTip = "打开 Calendar，右键查看设置和退出"
         }
 
         updateClock()
@@ -88,14 +84,57 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
 
     private func updateClock() {
         let now = Date.now
-        let title = clockFormatter.menuBarTitle(at: now, pattern: settings.clockPattern)
-        if let button = statusItem?.button, button.attributedTitle.string != title {
-            button.attributedTitle = NSAttributedString(
-                string: title,
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
-            )
+        let items = settings.clockItems(at: now)
+        if let button = statusItem?.button, items != lastClockItems {
+            lastClockItems = items
+            if let menuBarIcon, items.contains(.icon) {
+                button.attributedTitle = NSAttributedString(string: "")
+                button.image = clockImage(items, icon: menuBarIcon)
+                button.imagePosition = .imageOnly
+            } else {
+                let title = items.compactMap { item -> String? in
+                    if case .text(let text) = item { return text }
+                    return nil
+                }.joined(separator: " ")
+                button.image = nil
+                button.imagePosition = .noImage
+                button.attributedTitle = NSAttributedString(string: title.isEmpty ? "日历" : title, attributes: [.font: clockFont])
+            }
+            button.setAccessibilityLabel(items.map { item in
+                switch item {
+                case .icon: return "日历"
+                case .text(let text): return text
+                }
+            }.joined(separator: " "))
         }
         model.refreshToday(at: now)
+    }
+
+    private func clockImage(_ items: [ClockDisplayItem], icon: NSImage) -> NSImage {
+        let parts = items.map { item -> (size: NSSize, draw: (NSRect) -> Void) in
+            switch item {
+            case .icon:
+                return (icon.size, { icon.draw(in: $0) })
+            case .text(let text):
+                let title = NSAttributedString(string: text, attributes: [.font: clockFont, .foregroundColor: NSColor.black])
+                let size = title.size()
+                return (NSSize(width: ceil(size.width), height: ceil(size.height)), { title.draw(in: $0) })
+            }
+        }
+        let gap: CGFloat = 4
+        let width = parts.reduce(0) { $0 + $1.size.width } + CGFloat(parts.count - 1) * gap
+        let height = parts.map { $0.size.height }.max() ?? icon.size.height
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            var x = rect.minX
+            for part in parts {
+                part.draw(NSRect(x: x, y: rect.midY - part.size.height / 2, width: part.size.width, height: part.size.height))
+                x += part.size.width + gap
+            }
+            return true
+        }
+        // Let the status bar tint the entire image, including an icon positioned between text fields.
+        image.isTemplate = true
+        return image
     }
 
     @objc private func holidayRefreshDidTick(_ timer: Timer) {
@@ -125,7 +164,7 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
             let settingsItem = menu.addItem(withTitle: "设置…", action: #selector(openSettingsFromMenu(_:)), keyEquivalent: ",")
             settingsItem.target = self
             menu.addItem(.separator())
-            let quitItem = menu.addItem(withTitle: "退出 SimpleCalendar",
+            let quitItem = menu.addItem(withTitle: "退出 Calendar",
                                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
             quitItem.target = NSApp
             NSMenu.popUpContextMenu(menu, with: event, for: sender)
@@ -137,9 +176,28 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
         } else {
             model.goToToday()
             activateApp()
+            configurePopover(on: sender.window?.screen ?? NSScreen.main)
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    private func configurePopover(on screen: NSScreen?) {
+        let available = screen.map { CGSize(width: $0.visibleFrame.width - 16, height: $0.visibleFrame.height - 24) }
+        let view = CalendarPopoverView(
+            model: model, settings: settings, availableSize: available,
+            openSettings: { [weak self] in self?.showSettings() },
+            openSchedule: { [weak self] day in self?.showScheduleEditor(for: day) },
+            resize: { [weak self] size in
+                guard let popover = self?.popover else { return }
+                let animates = popover.animates
+                popover.animates = false
+                popover.contentSize = size
+                popover.animates = animates
+            }
+        )
+        popover.contentViewController = NSHostingController(rootView: view)
+        popover.contentSize = settings.popoverLayout.fitted(in: available).size
     }
 
     @objc private func openSettingsFromMenu(_ sender: NSMenuItem) {
@@ -160,7 +218,7 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
             }
             let controller = NSHostingController(rootView: view)
             window = NSWindow(contentViewController: controller)
-            window.title = "SimpleCalendar 设置"
+            window.title = "Calendar 设置"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             settingsWindow = window
