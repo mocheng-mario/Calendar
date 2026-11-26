@@ -216,7 +216,7 @@ struct LunarDate {
     }
 }
 
-enum Festival {
+enum Festival: String, CaseIterable {
     case springFestival
     case springFestivalEve
     case qingming

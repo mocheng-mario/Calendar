@@ -6,6 +6,7 @@ import SwiftUI
 final class CalendarSettings: ObservableObject {
     private enum Key {
         static let theme = "themeColor"
+        static let customTheme = "customTheme"
         static let popoverLayout = "popoverLayout"
         static let firstWeekday = "firstWeekday"
         static let clockFields = "clockFields"
@@ -28,6 +29,7 @@ final class CalendarSettings: ObservableObject {
     @Published var theme: CalendarTheme {
         didSet { defaults.set(theme.rawValue, forKey: Key.theme) }
     }
+    @Published private(set) var customTheme: CalendarCustomTheme?
     @Published var popoverLayout: CalendarPopoverLayout {
         didSet { defaults.set(try? JSONEncoder().encode(popoverLayout), forKey: Key.popoverLayout) }
     }
@@ -63,6 +65,9 @@ final class CalendarSettings: ObservableObject {
         cachedHolidays = cacheDirectory.map(HolidayCalendar.init(directory:)) ?? HolidayCalendar(documents: [])
         solarTerms = solarDirectory.map(SolarTerms.cached(in:)) ?? .bundled
         theme = defaults.string(forKey: Key.theme).flatMap(CalendarTheme.init(rawValue:)) ?? .amber
+        customTheme = defaults.data(forKey: Key.customTheme)
+            .flatMap { try? JSONDecoder().decode(CalendarCustomTheme.self, from: $0) }
+            .map { CalendarCustomTheme(source: $0.source, rules: $0.rules.withStableSchedulePainters) }
         popoverLayout = defaults.data(forKey: Key.popoverLayout)
             .flatMap { try? JSONDecoder().decode(CalendarPopoverLayout.self, from: $0) }?.clamped ?? CalendarPopoverLayout()
         let storedWeekday = defaults.integer(forKey: Key.firstWeekday)
@@ -86,6 +91,16 @@ final class CalendarSettings: ObservableObject {
 
     var defaultHolidays: HolidayCalendar { HolidayCalendar.bundled.replacingYears(with: cachedHolidays) }
     var isRefreshingDefaultHolidays: Bool { !refreshingDefaultYears.isEmpty }
+
+    func applyCustomTheme(_ theme: CalendarCustomTheme) throws {
+        defaults.set(try JSONEncoder().encode(theme), forKey: Key.customTheme)
+        customTheme = theme
+    }
+
+    func resetCustomTheme() {
+        defaults.removeObject(forKey: Key.customTheme)
+        customTheme = nil
+    }
 
     var launchesAtLogin: Bool { loginItemStatus == .enabled || loginItemStatus == .requiresApproval }
 

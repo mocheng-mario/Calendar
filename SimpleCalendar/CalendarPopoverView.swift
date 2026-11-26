@@ -10,6 +10,10 @@ struct CalendarPopoverView: View {
         let pointer: CGPoint
         let layout: CalendarPopoverLayout
     }
+    private struct MonthEffect: Hashable {
+        let date: Date
+        let painter: String
+    }
 
     @ObservedObject var model: CalendarModel
     @ObservedObject var settings: CalendarSettings
@@ -18,9 +22,13 @@ struct CalendarPopoverView: View {
     let openSchedule: (Date) -> Void
     let resize: (CGSize) -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var resizeStart: ResizeStart?
     @State private var resizePreview: CalendarPopoverLayout?
     @State private var isYearPickerOpen = false
+    @State private var monthEffectDate: Date?
+    @State private var unavailableCanvasSource: String?
+    @State private var failedThemeTiles: Set<CalendarThemeTile.Key> = []
 
     private static let gridSpacing: CGFloat = 3
     private static let monthHeaderHeight: CGFloat = 40
@@ -30,6 +38,7 @@ struct CalendarPopoverView: View {
         (0..<7).map { CalendarDay.weekdayNames[(settings.firstWeekday - 1 + $0) % 7] }
     }
     private var palette: CalendarPalette { CalendarPalette(isDark: colorScheme == .dark, theme: settings.theme) }
+    private var themeRules: CalendarThemeRules? { settings.customTheme?.rules(isDark: palette.isDark) }
 
     init(model: CalendarModel, settings: CalendarSettings, availableSize: CGSize?,
          openSettings: @escaping () -> Void, openSchedule: @escaping (Date) -> Void,
@@ -51,7 +60,7 @@ struct CalendarPopoverView: View {
         let selectedSchedules = scheduleDays[model.selectedDate] ?? []
         let details = detailsPane(day: days.first { $0.date == model.selectedDate }, holidays: holidays,
                                   schedules: selectedSchedules, width: layout.detailsWidth)
-        let calendar = calendarGrid(days, holidays: holidays, scheduleDays: Set(scheduleDays.keys))
+        let calendar = calendarGrid(days, holidays: holidays, scheduleDays: scheduleDays)
             .frame(width: CGFloat(layout.calendarWidth))
         HStack(alignment: .top, spacing: 0) {
             if layout.detailsSide == .left {
@@ -89,7 +98,16 @@ struct CalendarPopoverView: View {
             }
         }
         .onAppear { loadYears(years) }
+        .onDisappear { monthEffectDate = nil }
         .onChange(of: years) { loadYears($0) }
+        .onChange(of: model.selectedDate) { date in
+            if monthEffectDate != date { monthEffectDate = nil }
+        }
+        .onChange(of: settings.customTheme) { _ in
+            monthEffectDate = nil
+            unavailableCanvasSource = nil
+            failedThemeTiles.removeAll()
+        }
     }
 
     private func cornerHandle(_ side: CalendarPopoverLayout.Side, detailsSide: CalendarPopoverLayout.Side) -> some View {
@@ -189,8 +207,18 @@ struct CalendarPopoverView: View {
         Task { await settings.loadCalendarYears(years) }
     }
 
-    private func calendarGrid(_ days: [CalendarDay], holidays: HolidayCalendar, scheduleDays: Set<Date>) -> some View {
+    private func calendarGrid(_ days: [CalendarDay], holidays: HolidayCalendar,
+                              scheduleDays: [Date: [CalendarSchedule]]) -> some View {
         let panelShape = RoundedRectangle(cornerRadius: 11)
+        let customTheme = settings.customTheme
+        let panelEffect = selectedMonthEffect(days: days, holidays: holidays)
+        let backgrounds: [Date: CalendarThemeRules.Background] = customTheme.map { theme in
+            // The panel effect replaces the individual date backgrounds until the selection changes.
+            guard panelEffect == nil else { return [:] }
+            let matched = themeBackgrounds(theme.rules(isDark: palette.isDark), days: days,
+                                           holidays: holidays, scheduleDays: scheduleDays)
+            return theme.source == unavailableCanvasSource ? matched.filter { $0.value.painter == nil } : matched
+        } ?? [:]
         return VStack(alignment: .leading, spacing: 0) {
             monthHeader
                 .padding(.horizontal, Self.monthHeaderInset)
@@ -210,21 +238,24 @@ struct CalendarPopoverView: View {
                 let rowHeight = max(1, (geometry.size.height - 5 * Self.gridSpacing) / 6)
                 LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
                     ForEach(days) { day in
-                        let solarTerm = holidays.solarTerms.name(on: day.date)
-                        CalendarDayCell(day: day, isToday: day.date == model.today,
-                                        isSelected: day.date == model.selectedDate, holiday: holidays[day.date],
-                                        statutoryName: holidays.statutoryOccasion(on: day.date)?.name,
-                                        festival: day.festival(solarTerm: solarTerm), solarTerm: solarTerm,
-                                        hasSchedule: scheduleDays.contains(day.date),
-                                        height: rowHeight, palette: palette) {
-                            model.select(day.date)
-                        }
-                        .contextMenu {
-                            Button {
-                                openSchedule(day.date)
-                            } label: {
-                                Label("添加日程…", systemImage: "calendar.badge.plus")
-                            }
+                        dayCell(day, holidays: holidays, schedules: scheduleDays[day.date] ?? [],
+                                background: backgrounds[day.date], height: rowHeight)
+                    }
+                }
+                .background {
+                    if let customTheme {
+                        let tiles = themeTiles(days, backgrounds: backgrounds, size: geometry.size, rowHeight: rowHeight)
+                        if !tiles.isEmpty {
+                            CalendarThemeCanvas(
+                                request: .draw(customTheme, .init(
+                                    tiles: tiles, isDark: palette.isDark, reduceMotion: reduceMotion
+                                )),
+                                onFailure: { _ in unavailableCanvasSource = customTheme.source },
+                                onDrawingError: { key, _ in _ = failedThemeTiles.insert(key) }
+                            )
+                            .id(customTheme.source)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                         }
                     }
                 }
@@ -233,9 +264,111 @@ struct CalendarPopoverView: View {
             .padding(.top, 3)
             .padding(.bottom, 6)
         }
+        .background {
+            if let customTheme, let panelEffect {
+                GeometryReader { geometry in
+                    monthEffectCanvas(panelEffect, theme: customTheme, size: geometry.size)
+                }
+            }
+        }
         .background(palette.surface)
         .clipShape(panelShape)
         .overlay { panelShape.strokeBorder(palette.divider.opacity(0.65)).allowsHitTesting(false) }
+    }
+
+    private func selectedMonthEffect(days: [CalendarDay], holidays: HolidayCalendar) -> MonthEffect? {
+        guard let date = monthEffectDate, date == model.selectedDate,
+              settings.customTheme?.source != unavailableCanvasSource,
+              let day = days.first(where: { $0.date == date }) else { return nil }
+        let solarTerm = holidays.solarTerms.name(on: date)
+        guard let painter = themeRules?.occasionPainter(for: day, solarTerm: solarTerm) else { return nil }
+        return MonthEffect(date: date, painter: painter)
+    }
+
+    private func monthEffectCanvas(_ effect: MonthEffect, theme: CalendarCustomTheme, size: CGSize) -> some View {
+        let tile = CalendarThemeTile(id: themeTileID(for: effect.date), painter: effect.painter,
+                                     frame: CGRect(origin: .zero, size: size))
+        let restoreBackground = {
+            if monthEffectDate == effect.date { monthEffectDate = nil }
+        }
+        return CalendarThemeCanvas(
+            request: .draw(theme, .init(tiles: [tile], isDark: palette.isDark, reduceMotion: reduceMotion)),
+            onFailure: { _ in restoreBackground() },
+            onDrawingError: { _, _ in restoreBackground() }
+        )
+        .id(effect)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func dayCell(_ day: CalendarDay, holidays: HolidayCalendar, schedules: [CalendarSchedule],
+                         background: CalendarThemeRules.Background?, height: CGFloat) -> some View {
+        let date = day.date
+        let solarTerm = holidays.solarTerms.name(on: date)
+        let holiday = holidays[date]
+        let statutoryName = holidays.statutoryOccasion(on: date)?.name
+        let festival = day.festival(solarTerm: solarTerm)
+        let rules = day.isCurrentMonth ? themeRules : nil
+        let festivals: [String: CalendarThemeRules.OccasionStyle] = rules?.festivalStyles(for: day, festival: festival) ?? [:]
+        let extraName = festivals.keys.sorted().first { festivals[$0]?.subtitleColor != nil }
+        let name = festival == .springFestivalEve
+            ? Festival.springFestivalEve.name
+            : statutoryName ?? festival?.name ?? solarTerm ?? extraName
+        let festivalColor = occasionNames(name).compactMap { festivals[$0]?.subtitleColor }.first
+        let termColor = name == solarTerm ? rules?.solarTermStyle(named: solarTerm)?.subtitleColor : nil
+        let dotColor = schedules.compactMap { rules?.scheduleRule(for: $0)?.dotColor }.first
+        let cell = CalendarDayCell(
+            day: day, isToday: date == model.today, isSelected: date == model.selectedDate,
+            holiday: holiday, statutoryName: statutoryName, festival: festival, solarTerm: solarTerm,
+            hasSchedule: !schedules.isEmpty, customBackground: background, occasionName: name,
+            customSubtitleColor: Color(themeHex: festivalColor ?? termColor), scheduleDotColor: Color(themeHex: dotColor),
+            height: height, palette: palette,
+            action: {
+                monthEffectDate = date
+                model.select(date)
+            }
+        )
+
+        return cell.contextMenu {
+            Button {
+                openSchedule(date)
+            } label: {
+                Label("添加日程…", systemImage: "calendar.badge.plus")
+            }
+        }
+    }
+
+    private func themeBackgrounds(_ rules: CalendarThemeRules, days: [CalendarDay], holidays: HolidayCalendar,
+                                  scheduleDays: [Date: [CalendarSchedule]]) -> [Date: CalendarThemeRules.Background] {
+        var backgrounds: [Date: CalendarThemeRules.Background] = [:]
+        for day in days where day.isCurrentMonth && day.date != model.today {
+            let solarTerm = holidays.solarTerms.name(on: day.date)
+            guard let background = rules.background(
+                for: day, festival: day.festival(solarTerm: solarTerm), solarTerm: solarTerm,
+                schedules: scheduleDays[day.date] ?? []
+            ) else { continue }
+            if let painter = background.painter,
+               failedThemeTiles.contains(.init(id: themeTileID(for: day.date), painter: painter)) { continue }
+            backgrounds[day.date] = background
+        }
+        return backgrounds
+    }
+
+    private func themeTiles(_ days: [CalendarDay], backgrounds: [Date: CalendarThemeRules.Background],
+                            size: CGSize, rowHeight: CGFloat) -> [CalendarThemeTile] {
+        let gap = Self.gridSpacing
+        let width = max(0, (size.width - 6 * gap) / 7)
+        return days.enumerated().compactMap { index, day in
+            guard let painter = backgrounds[day.date]?.painter else { return nil }
+            let frame = CGRect(x: CGFloat(index % 7) * (width + gap),
+                               y: CGFloat(index / 7) * (rowHeight + gap),
+                               width: width, height: rowHeight)
+            return CalendarThemeTile(id: themeTileID(for: day.date), painter: painter, frame: frame)
+        }
+    }
+
+    private func themeTileID(for date: Date) -> String {
+        String(date.timeIntervalSinceReferenceDate)
     }
 
     private var monthHeader: some View {
@@ -257,7 +390,10 @@ struct CalendarPopoverView: View {
 
             Spacer(minLength: 4)
 
-            Button(action: model.goToToday) {
+            Button {
+                monthEffectDate = nil
+                model.goToToday()
+            } label: {
                 Text("回今天")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(palette.secondary)
@@ -323,6 +459,7 @@ struct CalendarPopoverView: View {
                         Button {
                             isYearPickerOpen = false
                             guard !isSelected else { return }
+                            monthEffectDate = nil
                             model.goToYear(year)
                             Task { _ = try? await settings.refreshDefaultHolidays(force: false, years: [year]) }
                         } label: {
@@ -359,6 +496,7 @@ struct CalendarPopoverView: View {
 
     private func monthArrow(_ symbol: String, label: String, offset: Int) -> some View {
         Button {
+            monthEffectDate = nil
             model.moveMonth(by: offset)
         } label: {
             Image(systemName: symbol)
@@ -422,20 +560,7 @@ struct CalendarPopoverView: View {
                 }
             }
 
-            if holiday != nil || festival != nil || solarTerm != nil {
-                HStack(spacing: 5) {
-                    if let holiday {
-                        let status = holiday.isOffDay ? "休" : "班"
-                        detailBadge("\(holiday.name) · \(status)", symbol: holiday.isOffDay ? "flag.fill" : "briefcase", color: palette.holiday(holiday))
-                    }
-                    if let festival, festival.name != holiday?.name {
-                        detailBadge(festival.name, symbol: festival.symbol, color: palette.festival(festival))
-                    }
-                    if let solarTerm {
-                        detailBadge(solarTerm, symbol: "leaf", color: palette.solarTerm)
-                    }
-                }
-            }
+            occasionBadges(for: day, holiday: holiday, festival: festival, solarTerm: solarTerm)
 
             if !missing.isEmpty {
                 Text(missing.joined(separator: " · "))
@@ -444,6 +569,40 @@ struct CalendarPopoverView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func occasionBadges(for day: CalendarDay, holiday: HolidayDay?, festival: Festival?, solarTerm: String?) -> some View {
+        let styles: [String: CalendarThemeRules.OccasionStyle] = themeRules?.festivalStyles(for: day, festival: festival) ?? [:]
+        let holidayNames = occasionNames(holiday?.name)
+        let extraFestivals = styles.keys.sorted().filter {
+            $0 != festival?.name && !holidayNames.contains($0) && styles[$0]?.badge != nil
+        }
+        if holiday != nil || festival != nil || solarTerm != nil || !extraFestivals.isEmpty {
+            HStack(spacing: 5) {
+                if let holiday {
+                    let status = holiday.isOffDay ? "休" : "班"
+                    let style = holidayNames.compactMap { styles[$0]?.badge }.first
+                    detailBadge("\(holiday.name) · \(status)", symbol: holiday.isOffDay ? "flag.fill" : "briefcase",
+                                color: palette.holiday(holiday), style: style)
+                }
+                if let festival, festival.name != holiday?.name {
+                    detailBadge(festival.name, symbol: festival.symbol, color: palette.festival(festival),
+                                style: styles[festival.name]?.badge)
+                }
+                ForEach(extraFestivals, id: \.self) { name in
+                    detailBadge(name, symbol: "flag.fill", color: palette.weekend, style: styles[name]?.badge)
+                }
+                if let solarTerm {
+                    detailBadge(solarTerm, symbol: "leaf", color: palette.solarTerm,
+                                style: themeRules?.solarTermStyle(named: solarTerm)?.badge)
+                }
+            }
+        }
+    }
+
+    private func occasionNames(_ name: String?) -> [String] {
+        name?.split(separator: "、").map { String($0).trimmingCharacters(in: .whitespaces) } ?? []
     }
 
     private func daySchedules(_ schedules: [CalendarSchedule]) -> some View {
@@ -455,12 +614,20 @@ struct CalendarPopoverView: View {
 
             LazyVStack(spacing: 0) {
                 ForEach(schedules) { schedule in
+                    let style = themeRules?.scheduleRule(for: schedule)?.row
+                    let titleColor = Color(themeHex: style?.titleColor) ?? palette.primary
                     HStack(spacing: 8) {
                         Text(schedule.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))))
                             .foregroundStyle(palette.secondary)
                             .monospacedDigit()
                             .fixedSize()
+                        if let icon = style?.icon {
+                            Image(systemName: icon)
+                                .foregroundStyle(titleColor)
+                                .accessibilityHidden(true)
+                        }
                         Text(schedule.displayTitle)
+                            .foregroundStyle(titleColor)
                             .lineLimit(1)
                             .help(schedule.displayTitle)
                         Spacer(minLength: 0)
@@ -480,14 +647,15 @@ struct CalendarPopoverView: View {
         return lunar.zodiac.map { "\(description) · \($0)年" } ?? description
     }
 
-    private func detailBadge(_ text: String, symbol: String, color: Color) -> some View {
-        Label(text, systemImage: symbol)
+    private func detailBadge(_ text: String, symbol: String, color: Color, style: CalendarThemeRules.BadgeStyle?) -> some View {
+        let tint = Color(themeHex: style?.color) ?? color
+        return Label(text, systemImage: style?.icon ?? symbol)
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(color)
+            .foregroundStyle(tint)
             .lineLimit(1)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(color.opacity(0.14), in: Capsule())
+            .background(tint.opacity(0.14), in: Capsule())
     }
 }
 
@@ -500,6 +668,10 @@ private struct CalendarDayCell: View {
     let festival: Festival?
     let solarTerm: String?
     let hasSchedule: Bool
+    let customBackground: CalendarThemeRules.Background?
+    let occasionName: String?
+    let customSubtitleColor: Color?
+    let scheduleDotColor: Color?
     let height: CGFloat
     let palette: CalendarPalette
     let action: () -> Void
@@ -508,7 +680,6 @@ private struct CalendarDayCell: View {
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 7) }
     private var festivalColor: Color? { festival.map(palette.festival) }
-    private var occasionName: String? { statutoryName ?? festival?.name ?? solarTerm }
 
     var body: some View {
         Button(action: action) {
@@ -541,7 +712,7 @@ private struct CalendarDayCell: View {
             }
             .overlay(alignment: .topLeading) {
                 if hasSchedule {
-                    Circle().fill(isToday ? palette.todayText : palette.selection)
+                    Circle().fill(scheduleDotColor ?? (isToday ? palette.todayText : palette.selection))
                         .frame(width: 4, height: 4)
                         .padding(4)
                 }
@@ -562,6 +733,7 @@ private struct CalendarDayCell: View {
     }
 
     private var subtitleColor: Color {
+        if let customSubtitleColor { return customSubtitleColor }
         if isToday { return palette.todaySubtitle }
         if !day.isCurrentMonth { return palette.muted }
         if let festivalColor { return festivalColor }
@@ -571,6 +743,7 @@ private struct CalendarDayCell: View {
 
     private var highlight: Color {
         if isToday { return palette.today }
+        if let customBackground { return customBackground.swiftUIColor ?? .clear }
         if isSelected { return palette.selection.opacity(palette.isDark ? 0.16 : 0.09) }
         if isHovered { return palette.primary.opacity(0.06) }
         guard day.isCurrentMonth else { return .clear }

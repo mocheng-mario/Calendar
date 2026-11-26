@@ -54,7 +54,10 @@ install: app
 	if [ -e "$$destination" ]; then mv "$$destination" "$$backup"; fi; \
 	mv "$$staged" "$$destination"; \
 	installed=1; \
-	printf '已安装到 %s\n' "$$destination"
+	printf '已安装到 %s\n' "$$destination"; \
+	if ! /usr/bin/open "$$destination"; then \
+		printf 'Calendar 已安装，启动失败：%s\n' "$$destination" >&2; exit 1; \
+	fi
 
 dmg: app
 	@set -eu; \

@@ -8,14 +8,36 @@ enum SimpleCalendarApp {
         let application = NSApplication.shared
         let controller = StatusBarController()
         application.delegate = controller
+        application.mainMenu = makeMainMenu(application)
         withExtendedLifetime(controller) {
             application.run()
         }
     }
+
+    @MainActor
+    private static func makeMainMenu(_ application: NSApplication) -> NSMenu {
+        let mainMenu = NSMenu()
+        let appMenu = NSMenu(title: "Calendar")
+        let quit = appMenu.addItem(withTitle: "退出 Calendar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = application
+        mainMenu.addItem(withTitle: "Calendar", action: nil, keyEquivalent: "").submenu = appMenu
+
+        let edit = NSMenu(title: "编辑")
+        edit.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        mainMenu.addItem(withTitle: "编辑", action: nil, keyEquivalent: "").submenu = edit
+        return mainMenu
+    }
 }
 
 @MainActor
-private final class StatusBarController: NSObject, NSApplicationDelegate {
+private final class StatusBarController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let model = CalendarModel()
     private let settings = CalendarSettings()
     private let popover = NSPopover()
@@ -32,6 +54,7 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         popover.behavior = .transient
+        popover.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidResignKey(_:)),
                                                name: NSWindow.didResignKeyNotification, object: nil)
 
@@ -65,6 +88,10 @@ private final class StatusBarController: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         settings.refreshLoginItemStatus()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        popover.contentViewController = nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var remoteAddress = ""
     @State private var showingHolidayImport = false
     @State private var showingHolidayTemplate = false
+    @State private var showingCustomTheme = false
     @State private var holidayError: String?
     @State private var holidayUpdateMessage: String?
 
@@ -47,6 +48,9 @@ struct SettingsView: View {
         .padding(12)
         .environment(\.calendar, CalendarDates.localGregorian)
         .environment(\.locale, Locale(identifier: "zh_CN"))
+        .sheet(isPresented: $showingCustomTheme) {
+            CalendarThemeEditor(settings: settings, model: model)
+        }
         .fileImporter(isPresented: $showingHolidayImport, allowedContentTypes: [.json], allowsMultipleSelection: true) { result in
             do {
                 try settings.importHolidays(from: result.get())
@@ -118,6 +122,9 @@ struct SettingsView: View {
                         .accessibilityLabel(Text(theme.label))
                         .accessibilityAddTraits(settings.theme == theme ? .isSelected : [])
                     }
+                }
+                Button(settings.customTheme == nil ? "自定义主题…" : "自定义主题…（已应用）") {
+                    showingCustomTheme = true
                 }
                 Text("菜单栏预览").font(.headline)
                 clockPreview
